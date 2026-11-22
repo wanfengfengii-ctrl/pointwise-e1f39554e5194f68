@@ -3,7 +3,7 @@ from collections.abc import Callable
 
 from copies.volume import VolumePort, VolumeState, VolumeStatusUnavailable
 from intake.rows import require_name
-from retirement.coverage import assess_coverage
+from retirement.assessment import check_volume, hold_inventory, release_inventory
 from retirement.execute import begin_destruction
 from retirement.journal import RetirementJournal, RetirementState
 from retirement.journal import RetirementRequest as RetirementRequest
@@ -31,9 +31,15 @@ def retire(db: sqlite3.Connection, port: VolumePort, request_id: str, volume_id:
         elif current.volume_id != volume_id:
             raise ValueError(f'retirement request already targets {current.volume_id}')
         if current.state in (RetirementState.WAITING, RetirementState.READY):
-            checked = assess_coverage(db, port, volume_id)
-            state = RetirementState.WAITING if checked.missing else RetirementState.READY
-            current = journal.record_progress(current, state, missing=checked.missing, evidence=checked.evidence)
+            held = hold_inventory(port, volume_id)
+            try:
+                missing, unverified, evidence, inventory = check_volume(db, port, volume_id)
+                state = RetirementState.WAITING if missing or unverified else RetirementState.READY
+                current = journal.record_progress(current, state, missing=missing, evidence=evidence,
+                                                  unverified_slots=unverified, inventory=inventory)
+            finally:
+                if held:
+                    release_inventory(port, volume_id)
 
     if current.state is RetirementState.READY:
         if on_ready is not None:

@@ -8,7 +8,6 @@ from copies.physical_store import LocalVolumeStore
 from copies.volume import VolumeLocation, VolumeReplyLost, VolumeState
 from intake.rows import OriginalRow
 
-
 TARGET = "GUARD-T"
 BACKUP = "GUARD-W"
 REQUEST = "GUARD-R"
@@ -92,6 +91,59 @@ def main():
             print(json.dumps({"before_dispatch": early.state.value, "after_commit": late.state.value,
                               "reopened": settled.state.value, "destruction_id": settled.operation_id,
                               "historical_total": old.total}, sort_keys=True))
+
+
+def demo_inventory():
+    """Demonstrate the inventory-guarded volume from a waiting B through reopen."""
+    with TemporaryDirectory(prefix="bend-guard-demo-") as directory:
+        root = Path(directory)
+        initialize(root)
+        with Archive(root) as desk:
+            def provision_target(volume_id, slots, **kwargs):
+                desk.volumes.provision_volume(volume_id, slots, inventory_guard=True, **kwargs)
+
+            first = prepare(desk, provision_target=provision_target)
+            desk.volumes.provision_volume(TARGET, {"1": B})  # machine appends, unregistered
+            waiting = desk.retire(REQUEST, TARGET)
+            if waiting.state.value != "waiting" or waiting.missing != (B.original_id,) \
+                    or waiting.unverified_slots != () or desk.volumes.inspect(TARGET) is not VolumeState.INTACT:
+                raise RuntimeError("the unregistered B slot must hold the retirement")
+            unregistered_inventory = [list(pair) for pair in waiting.inventory]
+
+            location = VolumeLocation(BACKUP, "1")
+            desk.volumes.provision_volume(BACKUP, {"1": B})
+            desk.register(B.original_id, location, B)
+        with ScriptedVolumeStore(root / "volumes.sqlite3", TARGET, interruption="rollback") as port, \
+                Archive(root, port=port) as desk:
+            try:
+                desk.retire(REQUEST, TARGET)
+            except CatalogInterrupted:
+                pass
+            else:
+                raise RuntimeError("the catalog interruption must follow the volume commit")
+            if desk.volumes.inspect(TARGET) is not VolumeState.DESTROYED:
+                raise RuntimeError("the volume must commit independently of the catalog")
+        with Archive(root) as reopened:
+            settled = reopened.retire(REQUEST, TARGET)
+            old = reopened.history(first.receipt_id)
+            if (settled.state.value != "retired"
+                    or settled.operation_id != reopened.volumes.destruction_id(TARGET)
+                    or settled.inventory != (("0", "GUARD-A"), ("1", "GUARD-B"))
+                    or settled.evidence != ((A.original_id, VolumeLocation(BACKUP, "0")),
+                                            (B.original_id, VolumeLocation(BACKUP, "1")))
+                    or old != first or old.total != 7):
+                raise RuntimeError("the guarded retirement must settle from the volume record")
+            print(json.dumps({
+                "waiting": {"state": waiting.state.value, "missing": list(waiting.missing),
+                            "unverified_slots": list(waiting.unverified_slots),
+                            "inventory": unregistered_inventory},
+                "reopened": {"state": settled.state.value, "operation_id": settled.operation_id,
+                             "inventory": [list(pair) for pair in settled.inventory],
+                             "evidence": [[original_id, list((location.volume_id, location.slot))]
+                                          for original_id, location in settled.evidence]},
+                "old_receipt": {"receipt_id": old.receipt_id,
+                                "readings": [line.reading for line in old.lines], "total": old.total},
+            }, sort_keys=True, ensure_ascii=False))
 
 
 if __name__ == "__main__":

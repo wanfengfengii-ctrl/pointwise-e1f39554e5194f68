@@ -38,6 +38,7 @@ class Archive:
             raise WorkspaceError('archive initialization is incomplete or absent')
         self.db = open_database(self.root / 'catalog.sqlite3', CATALOG_APPLICATION_ID)
         try:
+            RetirementJournal(self.db).upgrade_schema()
             self.volumes = LocalVolumeStore(self.root / 'volumes.sqlite3')
         except BaseException:
             self.db.close()
@@ -183,6 +184,8 @@ def demo() -> None:
             print(json.dumps({'while_waiting': during, 'old_receipt': asdict(original),
                               'new_receipt': asdict(signed), 'missing_reading_receipt': asdict(missing_sample)},
                              sort_keys=True))
+    from guard_scenario import demo_inventory
+    demo_inventory()
 
 
 def main(argv: list[str] | None = None) -> None:

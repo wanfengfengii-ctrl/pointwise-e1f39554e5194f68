@@ -39,4 +39,10 @@ with Archive('work') as desk:
 
 非法输入、身份冲突及请求冲突报告 `ValueError` 或其专用子类。未知批、原件、卷或签单报告 `KeyError`。新退役请求遇到未能确定目标状态时报告 `VolumeStatusUnavailable`，存储不完整报告 `WorkspaceError`。每个工作线程打开自己的 `Archive` 会话，进程间使用 SQLite 事务排序。Python API 提供在目录事务外触发的可选回调，可在初步退役覆盖后以及领取打开后、读某件前、候选取件后安排确定性交错。
 
+## 实物核退卷
+
+`provision_volume(..., inventory_guard=True)` 在卷第一次建卷时启用核退，模式随卷固定；省略或显式 `False` 追加时保留原模式，对既有普通卷传 `True` 报 `ValueError`。机台可以先把实物写入核退卷，资料员随后登记。`retire` 对核退卷按全部实存槽（含未登记槽）核对 `original_id`、`source`、`reading`：正文不符、来源未知或槽不可读的槽列入 `RetirementRequest.unverified_slots` 并拦退；其余仍有效原件各须有一个已登记、可用于覆盖且本次实读验真的卷外卷位，缺保障的原件列入 `missing`。判废件仍是实存槽但免补副本。`inventory` 为实际实存槽的 `(槽名, 原件号)` 元组，普通卷与核退卷未退时相应字段为空。
+
+核退卷的 `destroy(volume_id, operation_id, *, authorized_slots=..., evidence=...)` 只清除被授权覆盖的实际槽集，完整核退卷收到旧式未授权调用时保留原卷。核定期间机台追加报 `copies.volume.VolumeBusy` 并可重试，追加原子地不落槽；追加先成功则纳入之后的核定，销毁先成立则追加报 `ValueError`。失答后结局不明返回 `pending`；确认未销毁且仍有缺口时回到 `waiting`，补齐后同号续办。卷端先提交而目录未结清时，重开从卷端销毁记录取回实际采用的槽位、操作号和卷外依据。`guard_scenario.py` 的 `demo_inventory()` 演示 B 待迁、补齐、退役与重开复领。
+
 样例 P 的源序为 A、X1、B、X2，暖机件 X1、X2 判废前签单合计 23 μm。同批好件 A 和 B 分别为 7 和 11 μm。另批 C 虽也为 11 μm，仍有独立身份。A 已有 V1 副本且 B 待迁时，V0 保持完好，夜班可签 A、B 共 18 μm。B 的真副本登记后可退役 V0，按原号仍可读回判废前的四行签单。独立样例 S 按顺序展示 7、缺测和 11 μm，签单合计 18 μm。
