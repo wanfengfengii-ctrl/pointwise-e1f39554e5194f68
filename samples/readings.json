@@ -1,0 +1,10 @@
+{
+  "batches": [
+    {"batch_id": "S", "rows": [
+      {"original_id": "S7", "source": "bend/S/01", "reading": 7},
+      {"original_id": "SNA", "source": "bend/S/02", "reading": null},
+      {"original_id": "S11", "source": "bend/S/03", "reading": 11}
+    ]}
+  ],
+  "volumes": {"VS": {"01": "S7", "02": "SNA", "03": "S11"}}
+}

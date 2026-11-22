@@ -1,0 +1,19 @@
+{
+  "batches": [
+    {"batch_id": "P", "rows": [
+      {"original_id": "A", "source": "bend/P/01", "reading": 7},
+      {"original_id": "X1", "source": "warmup/X/01", "reading": 2},
+      {"original_id": "B", "source": "bend/P/03", "reading": 11},
+      {"original_id": "X2", "source": "warmup/X/02", "reading": 3}
+    ]},
+    {"batch_id": "CAL", "rows": [
+      {"original_id": "C", "source": "bend/CAL/01", "reading": 11}
+    ]}
+  ],
+  "volumes": {
+    "V0": {"01": "A", "02": "X1", "03": "B", "04": "X2"},
+    "V1": {"01": "A", "03": "C"}
+  },
+  "withdrawal": {"order_id": "QC-X", "original_ids": ["X1", "X2"]},
+  "replacement": {"original_id": "B", "volume_id": "V1", "slot": "02"}
+}
